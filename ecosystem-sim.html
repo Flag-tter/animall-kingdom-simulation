@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Terrarium — Ecosystem Simulator</title>
+<style>
+  :root{
+    --moss: #3a5a40;
+    --moss-dark: #223b26;
+    --bark: #5b4636;
+    --bark-dark: #3a2c22;
+    --parchment: #eee7d3;
+    --sun: #f2b544;
+    --sky-day: #bfe3ea;
+    --sky-night: #16213a;
+    --accent: #d9622b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: linear-gradient(160deg, var(--moss-dark), #1b2a1e 70%);
+    color: var(--parchment);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 14px;
+    min-height:100vh;
+  }
+  h1{
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight:700;
+    letter-spacing: 0.5px;
+    margin: 4px 0 2px 0;
+    font-size: 1.6em;
+    color: var(--parchment);
+  }
+  .sub{
+    font-size:0.8em;
+    opacity:0.65;
+    margin-bottom:10px;
+    text-align:center;
+    max-width:600px;
+  }
+  .frame{
+    border: 10px solid var(--bark);
+    border-radius: 18px;
+    box-shadow: 0 0 0 3px var(--bark-dark), 0 12px 30px rgba(0,0,0,0.5);
+    overflow:hidden;
+    position:relative;
+    background:#000;
+  }
+  canvas#world{
+    display:block;
+    background: linear-gradient(var(--sky-day), var(--sky-day));
+    cursor: crosshair;
+  }
+  .toolbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    justify-content:center;
+    margin: 10px 0 8px 0;
+    max-width: 760px;
+  }
+  .tool{
+    background: #2d4531;
+    border: 2px solid transparent;
+    color: var(--parchment);
+    padding: 7px 12px;
+    border-radius: 10px;
+    cursor:pointer;
+    font-size: 0.85em;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    transition: all 0.12s ease;
+    user-select:none;
+  }
+  .tool:hover{ background:#3a5a40; }
+  .tool.active{
+    border-color: var(--sun);
+    background: #4a6b4f;
+    box-shadow: 0 0 8px rgba(242,181,68,0.5);
+  }
+  .tool .emoji{ font-size:1.2em; }
+  .controls{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+    justify-content:center;
+    margin-bottom: 8px;
+  }
+  button.action{
+    background: var(--accent);
+    border:none;
+    color: white;
+    padding: 7px 14px;
+    border-radius: 10px;
+    cursor:pointer;
+    font-size:0.85em;
+    font-weight:600;
+  }
+  button.action:hover{ filter:brightness(1.1); }
+  button.action.secondary{
+    background:#454f3a;
+  }
+  .speedwrap{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:0.8em;
+    background:#2d4531;
+    padding:5px 10px;
+    border-radius:10px;
+  }
+  .stats{
+    display:flex;
+    gap:16px;
+    flex-wrap:wrap;
+    justify-content:center;
+    font-family: "Consolas", monospace;
+    font-size: 0.85em;
+    background: #223b26;
+    padding: 8px 16px;
+    border-radius: 10px;
+    margin-top: 8px;
+  }
+  .stat{ display:flex; gap:6px; align-items:center; }
+  .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+  #chart{
+    display:block;
+    margin-top:8px;
+    background: #16241a;
+    border-radius: 10px;
+  }
+  .hint{
+    font-size:0.72em;
+    opacity:0.55;
+    margin-top:6px;
+    text-align:center;
+    max-width:600px;
+  }
+  .footer-links{
+    margin-top:10px;
+    font-size:0.75em;
+    opacity:0.5;
+  }
+
+  /* ---- inspector ---- */
+  .inspector{
+    position:absolute;
+    top:10px;
+    right:10px;
+    width:172px;
+    background:rgba(22,36,26,0.88);
+    border:1px solid rgba(238,231,211,0.25);
+    border-radius:10px;
+    padding:10px 12px;
+    font-size:0.78em;
+    backdrop-filter: blur(2px);
+    display:none;
+    pointer-events:auto;
+  }
+  .inspector.show{ display:block; }
+  .inspector .insp-head{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:6px;
+  }
+  .inspector .insp-title{ font-weight:700; font-size:1.05em; }
+  .inspector .insp-close{
+    cursor:pointer; opacity:0.7; font-size:1.1em; line-height:1;
+    padding:0 2px;
+  }
+  .inspector .insp-close:hover{ opacity:1; }
+  .inspector .insp-row{
+    display:flex; justify-content:space-between;
+    margin:3px 0;
+    opacity:0.9;
+  }
+  .inspector .insp-bar-wrap{
+    background:rgba(255,255,255,0.12);
+    border-radius:6px;
+    height:6px;
+    margin:2px 0 6px 0;
+    overflow:hidden;
+  }
+  .inspector .insp-bar{
+    height:100%;
+    background: var(--sun);
+    border-radius:6px;
+  }
+  .inspector .insp-gone{
+    font-style:italic;
+    opacity:0.7;
+  }
+
+  /* ---- event log / ticker ---- */
+  .ticker{
+    width:100%;
+    max-width:720px;
+    box-sizing:border-box;
+    background:#223b26;
+    border-radius:10px;
+    padding:6px 12px;
+    margin-top:8px;
+    font-size:0.78em;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-height:1.6em;
+  }
+  .ticker .ticker-icon{ font-size:1.1em; flex-shrink:0; }
+  .ticker .ticker-text{
+    opacity:0.92;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .loglist{
+    width:100%;
+    max-width:720px;
+    box-sizing:border-box;
+    background:#16241a;
+    border-radius:10px;
+    margin-top:6px;
+    padding:6px 10px;
+    font-size:0.75em;
+    max-height:110px;
+    overflow-y:auto;
+  }
+  .loglist .logrow{
+    display:flex; gap:6px;
+    padding:2px 0;
+    opacity:0.85;
+    border-bottom:1px solid rgba(255,255,255,0.05);
+  }
+  .loglist .logrow:last-child{ border-bottom:none; }
+  .loglist .logday{ opacity:0.55; flex-shrink:0; }
+
+  /* ---- scenario / save-load row ---- */
+  .row2{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+    justify-content:center;
+    margin-bottom:8px;
+  }
+  .row2 .grouplabel{
+    font-size:0.72em;
+    opacity:0.55;
+    margin-right:2px;
+  }
+  #acctStatus{
+    font-size:0.78em;
+    opacity:0.85;
+  }
+
+  /* ---- auth modal ---- */
+  .modal-overlay{
+    position:fixed; inset:0;
+    background:rgba(8,12,8,0.6);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:100;
+  }
+  .modal-overlay.show{ display:flex; }
+  .modal-box{
+    background:#223b26;
+    border:1px solid rgba(238,231,211,0.22);
+    border-radius:14px;
+    padding:16px 18px;
+    width:250px;
+    box-shadow:0 14px 34px rgba(0,0,0,0.55);
+  }
+  .modal-head{
+    display:flex; justify-content:space-between; align-items:center;
+    font-weight:700; margin-bottom:10px;
+  }
+  .modal-body input{
+    width:100%; box-sizing:border-box;
+    padding:8px 10px; margin-bottom:8px;
+    border-radius:8px; border:1px solid rgba(238,231,211,0.25);
+    background:#16241a; color:var(--parchment); font-size:0.9em;
+  }
+  .modal-body input:focus{ outline:2px solid var(--sun); }
+  .modal-err{
+    color:#e8a08f; font-size:0.76em;
+    min-height:1.1em; margin:2px 0 8px 0;
+  }
+  .modal-btnrow{ display:flex; gap:8px; }
+  .modal-btnrow .action{ flex:1; }
+  .modal-hint{
+    font-size:0.68em; opacity:0.55; margin-top:8px; text-align:center;
+  }
+</style>
+</head>
+<body>
+
+<h1>🌿 Terrarium</h1>
+<div class="sub">A tiny living ecosystem with seasons, weather, and terrain. Click a tool, then click inside the glass to place it. Watch trees grow, herbivores graze, foxes hunt, and wolves stalk the foxes.</div>
+
+<div class="toolbar" id="toolbar">
+  <div class="tool active" data-tool="tree"><span class="emoji">🌳</span>Tree</div>
+  <div class="tool" data-tool="herbivore"><span class="emoji">🐰</span>Herbivore</div>
+  <div class="tool" data-tool="carnivore"><span class="emoji">🦊</span>Carnivore</div>
+  <div class="tool" data-tool="wolf"><span class="emoji">🐺</span>Wolf</div>
+  <div class="tool" data-tool="water"><span class="emoji">💧</span>Water</div>
+  <div class="tool" data-tool="rock"><span class="emoji">🪨</span>Rock</div>
+  <div class="tool" data-tool="erase"><span class="emoji">✖️</span>Erase</div>
+  <div class="tool" data-tool="inspect"><span class="emoji">🔍</span>Inspect</div>
+</div>
+
+<div class="controls">
+  <button class="action" id="playBtn">⏸ Pause</button>
+  <button class="action secondary" id="clearBtn">Clear All</button>
+  <button class="action secondary" id="seedBtn">🌱 Seed World</button>
+  <div class="speedwrap">
+    Speed
+    <input type="range" id="speed" min="0.5" max="4" step="0.5" value="1">
+    <span id="speedLabel">1x</span>
+  </div>
+</div>
+
+<div class="row2">
+  <span class="grouplabel">Scenarios:</span>
+  <button class="action secondary" id="scenDrought">🏜️ Drought</button>
+  <button class="action secondary" id="scenCrash">📉 Predator Crash</button>
+  <button class="action secondary" id="scenGraze">🐇 Overgrazing</button>
+</div>
+<div class="row2">
+  <span class="grouplabel">Terrarium:</span>
+  <button class="action secondary" id="saveBtn">💾 Save</button>
+  <button class="action secondary" id="loadBtn">📂 Load</button>
+</div>
+<div class="row2" id="accountRow">
+  <span class="grouplabel">Account:</span>
+  <span id="acctStatus">Checking session…</span>
+  <button class="action secondary" id="signInBtn">🔑 Sign In / Sign Up</button>
+  <button class="action secondary" id="guestBtn">👤 Continue as Guest</button>
+  <button class="action secondary" id="signOutBtn" style="display:none;">🚪 Sign Out</button>
+</div>
+
+<div class="frame">
+  <canvas id="world" width="720" height="440"></canvas>
+  <div class="inspector" id="inspector">
+    <div class="insp-head">
+      <span class="insp-title" id="inspTitle">🐰 Herbivore</span>
+      <span class="insp-close" id="inspClose">✕</span>
+    </div>
+    <div id="inspBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="authModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>🔑 Sign In</span>
+      <span class="insp-close" id="authModalClose">✕</span>
+    </div>
+    <div class="modal-body">
+      <input type="email" id="authEmail" placeholder="Email" autocomplete="email">
+      <input type="password" id="authPassword" placeholder="Password (min 6 chars)" autocomplete="current-password">
+      <div class="modal-err" id="authError"></div>
+      <div class="modal-btnrow">
+        <button class="action" id="authSignInBtn">Sign In</button>
+        <button class="action secondary" id="authSignUpBtn">Create Account</button>
+      </div>
+      <div class="modal-hint">Your terrarium saves to your account and follows you across devices.</div>
+    </div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><span class="dot" style="background:#3a8f3a"></span>Trees: <b id="cTree">0</b></div>
+  <div class="stat"><span class="dot" style="background:#c98b4b"></span>Herbivores: <b id="cHerb">0</b></div>
+  <div class="stat"><span class="dot" style="background:#c0483a"></span>Carnivores: <b id="cCarn">0</b></div>
+  <div class="stat"><span class="dot" style="background:#5a5a72"></span>Wolves: <b id="cWolf">0</b></div>
+  <div class="stat">Day: <b id="cDay">1</b></div>
+</div>
+<div class="stats" style="margin-top:6px;">
+  <div class="stat"><span id="seasonEmoji">🌸</span> Season: <b id="cSeason">Spring</b></div>
+  <div class="stat">Weather: <b id="cWeather">☀️ Clear</b></div>
+</div>
+<div class="stats" style="margin-top:6px;">
+  <div class="stat">🐰 avg speed: <b id="cHerbSpeed">–</b> size: <b id="cHerbSize">–</b></div>
+  <div class="stat">🦊 avg speed: <b id="cCarnSpeed">–</b> size: <b id="cCarnSize">–</b></div>
+</div>
+
+<div class="ticker" id="ticker">
+  <span class="ticker-icon" id="tickerIcon">🌱</span>
+  <span class="ticker-text" id="tickerText">The terrarium stirs to life…</span>
+</div>
+<div class="loglist" id="logList"></div>
+
+<canvas id="chart" width="720" height="90"></canvas>
+
+<div class="hint">Tip: too many carnivores will starve without enough herbivores; too few trees will starve the herbivores. Wolves hunt foxes, so a fox boom won't last forever. Winter slows growth and reproduction; spring speeds it back up. Droughts shrink water holes and storms can strike trees. Darker patches of ground grow trees faster. Rabbits cluster into herds and foxes hunt in small packs; every offspring inherits a slightly mutated speed and size from its parent, so watch the averages drift over generations; and animals remember the last spot they found food, water, or prey instead of searching blind.</div>
+<div class="footer-links">Built with canvas + a bit of chaos 🌎</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCOpQSXhHJJURqRfgNPtx8vg1E5Pf0YUKQ",
+    authDomain: "simulation-animal-9d29b.firebaseapp.com",
+    projectId: "simulation-animal-9d29b",
+    storageBucket: "simulation-animal-9d29b.firebasestorage.app",
+    messagingSenderId: "705225220286",
+    appId: "1:705225220286:web:3baf35fd1c380051e4feef"
+  };
+  if(typeof firebase !== 'undefined'){
+    firebase.initializeApp(firebaseConfig);
+  } else {
+    console.error('Firebase SDK failed to load — cloud save/sign-in will be unavailable this session.');
+  }
+</script>
+<script>
+(function(){
+  const canvas = document.getElementById('world');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  const chartCanvas = document.getElementById('chart');
+  const chartCtx = chartCanvas.getContext('2d');
+
+  // ---------- state ----------
+  let entities = [];
+  let particles = []; // little effects (sparkles, death puffs)
+  let currentTool = 'tree';
+  let playing = true;
+  let speed = 1;
+  let dayTime = 0; // 0..1 cycle
+  let dayCount = 1;
+  let history = [];
+  let lastHistorySample = 0;
+
+  // ---------- inspector ----------
+  let selectedId = null;
+
+  // ---------- event log / narrator ----------
+  let eventLog = []; // {day, icon, text}
+  let tickerQueue = [];
+  let tickerT = 0;
+  const TICKER_HOLD = 3.2; // seconds each message stays up
+  let aliveFlags = { tree:true, herbivore:true, carnivore:true, wolf:true };
+  let lastSeasonIdx = -1;
+  let dayBoundaryCounts = null;
+  let lastDayCounted = 0;
+
+  // seasons
+  const SEASON_LEN = 5; // days per season
+  const SEASONS = [
+    { name:'Spring', emoji:'🌸', grow:1.3, health:1.2, reproChance:1.6, reproCooldown:0.7, drain:0.9, scarcity:1.0, groundTint:'rgba(140,200,110,0.14)' },
+    { name:'Summer', emoji:'☀️', grow:1.1, health:1.0, reproChance:1.1, reproCooldown:1.0, drain:1.0, scarcity:1.0, groundTint:'rgba(0,0,0,0)' },
+    { name:'Fall',   emoji:'🍂', grow:0.8, health:0.8, reproChance:0.7, reproCooldown:1.2, drain:1.15, scarcity:0.85, groundTint:'rgba(180,110,40,0.16)' },
+    { name:'Winter', emoji:'❄️', grow:0.3, health:0.3, reproChance:0.15, reproCooldown:2.5, drain:1.5, scarcity:0.5, groundTint:'rgba(210,225,235,0.32)' },
+  ];
+  function getSeason(){
+    const idx = Math.floor((dayCount-1)/SEASON_LEN) % 4;
+    return SEASONS[idx];
+  }
+
+  // weather events
+  let weather = null; // {type:'drought'|'storm', t, duration, strikeTimer}
+  let weatherCooldown = rand(20,35);
+  let waterDroughtMul = 1; // 1 = normal water, lower = drought-shrunk
+  let flashT = 0; // lightning flash overlay
+  let rainOffset = 0;
+  let weatherParticles = []; // falling leaves/snow
+
+  // soil / terrain richness patches
+  let soilPatches = [];
+  function generateSoil(){
+    soilPatches = [];
+    const n = Math.floor(rand(5,8));
+    for(let i=0;i<n;i++){
+      soilPatches.push({
+        x: rand(30,W-30),
+        y: rand(H*0.68, H-15),
+        r: rand(50,110),
+        richness: rand(0.6,1.7),
+      });
+    }
+  }
+  function soilAt(x,y){
+    let total = 1;
+    for(const p of soilPatches){
+      const d = Math.hypot(x-p.x, y-p.y);
+      if(d<p.r){
+        const t = 1-d/p.r;
+        total += (p.richness-1)*t;
+      }
+    }
+    return clamp(total, 0.45, 1.9);
+  }
+
+  const CAPS = { tree: 120, herbivore: 70, carnivore: 25, wolf: 10 };
+
+  const EMOJI = {
+    tree: '🌳', sapling: '🌱',
+    herbivore: '🐰', carnivore: '🦊', wolf: '🐺',
+    water: '💧', rock: '🪨'
+  };
+
+  function rand(a,b){ return a + Math.random()*(b-a); }
+  function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+  function countType(t){ return entities.filter(e=>e.type===t && !e.dying).length; }
+  // genetic drift: inherit a parent trait with a small random mutation, clamped to species bounds
+  function mutate(v, lo, hi){ return clamp(v + rand(-0.07,0.07)*v, lo, hi); }
+  function avgTrait(type, key){
+    const list = entities.filter(e=>e.type===type && !e.dying);
+    if(!list.length) return 0;
+    return list.reduce((s,e)=>s+e[key],0)/list.length;
+  }
+
+  // ---------- narrator / event log ----------
+  const logListEl = document.getElementById('logList');
+  const tickerIconEl = document.getElementById('tickerIcon');
+  const tickerTextEl = document.getElementById('tickerText');
+
+  function logEvent(icon, text){
+    const entry = { day: dayCount, icon, text };
+    eventLog.unshift(entry);
+    if(eventLog.length > 60) eventLog.length = 60;
+    tickerQueue.push(entry);
+    renderLogList();
+  }
+
+  function renderLogList(){
+    logListEl.innerHTML = eventLog.slice(0,30).map(e =>
+      `<div class="logrow"><span class="logday">Day ${e.day}</span><span>${e.icon} ${e.text}</span></div>`
+    ).join('');
+  }
+
+  function checkExtinction(){
+    const types = ['tree','herbivore','carnivore','wolf'];
+    const labels = { tree:'The trees', herbivore:'The rabbits', carnivore:'The foxes', wolf:'The wolves' };
+    for(const t of types){
+      const alive = countType(t) > 0;
+      if(aliveFlags[t] && !alive){
+        logEvent('💀', `${labels[t]} have died out.`);
+      } else if(!aliveFlags[t] && alive){
+        logEvent('🌱', `${labels[t]} have returned to the terrarium.`);
+      }
+      aliveFlags[t] = alive;
+    }
+  }
+
+  function checkDayBoundary(){
+    const counts = { herbivore:countType('herbivore'), carnivore:countType('carnivore'), wolf:countType('wolf') };
+    if(dayBoundaryCounts){
+      const labels = { herbivore:'the rabbits', carnivore:'the fox population', wolf:'the wolf pack' };
+      for(const t of ['herbivore','carnivore','wolf']){
+        const prev = dayBoundaryCounts[t], cur = counts[t];
+        if(prev>=4 && cur >= prev*1.6 && cur>=6){
+          logEvent('📈', `A boom in ${labels[t]}.`);
+        } else if(prev>=6 && cur <= prev*0.5){
+          logEvent('📉', `A crash in ${labels[t]}.`);
+        }
+      }
+    }
+    dayBoundaryCounts = counts;
+  }
+
+  function updateTicker(dt){
+    if(tickerT>0){
+      tickerT -= dt;
+      return;
+    }
+    if(tickerQueue.length){
+      const e = tickerQueue.shift();
+      tickerIconEl.textContent = e.icon;
+      tickerTextEl.textContent = e.text;
+      tickerT = TICKER_HOLD;
+    }
+  }
+
+  // ---------- creation ----------
+  function makeEntity(type, x, y, opts={}){
+    const base = {
+      id: Math.random().toString(36).slice(2),
+      type, x, y,
+      vx:0, vy:0,
+      angle: rand(0,Math.PI*2),
+      dying:false, deathT:0,
+      age:0,
+      birthDay: dayCount,
+      gen: opts.gen ?? 1,
+      parentId: opts.parentId ?? null,
+      lineage: opts.lineage ?? [],
+      birthT: (type==='herbivore'||type==='carnivore'||type==='wolf') ? 0 : 1,
+    };
+    if(type==='tree'){
+      Object.assign(base,{
+        size: opts.size ?? 0.15,
+        maxSize: rand(0.85,1.15),
+        growRate: rand(0.05,0.09),
+        health: 20,
+        maxHealth: 100,
+        sway: rand(0,Math.PI*2),
+        reproCooldown: rand(4,10),
+        soil: soilAt(x,y),
+      });
+    } else if(type==='herbivore'){
+      Object.assign(base,{
+        energy: opts.energy ?? 65,
+        maxEnergy: 100,
+        speedMul: opts.speedMul ?? rand(0.85,1.2),
+        size: opts.size ?? rand(0.85,1.1),
+        reproCooldown: rand(3,6),
+        targetId: null,
+        wobble: rand(0,Math.PI*2),
+        memory: { foodX:null, foodY:null, foodAge:null, waterX:null, waterY:null, waterAge:null },
+      });
+    } else if(type==='carnivore'){
+      Object.assign(base,{
+        energy: opts.energy ?? 75,
+        maxEnergy: 110,
+        speedMul: opts.speedMul ?? rand(0.9,1.25),
+        size: opts.size ?? rand(0.9,1.15),
+        reproCooldown: rand(5,9),
+        targetId: null,
+        wobble: rand(0,Math.PI*2),
+        memory: { preyX:null, preyY:null, preyAge:null },
+      });
+    } else if(type==='wolf'){
+      Object.assign(base,{
+        energy: opts.energy ?? 85,
+        maxEnergy: 130,
+        speedMul: opts.speedMul ?? rand(0.85,1.05),
+        size: opts.size ?? rand(1.0,1.2),
+        reproCooldown: rand(14,20),
+        targetId: null,
+        wobble: rand(0,Math.PI*2),
+        memory: { preyX:null, preyY:null, preyAge:null },
+      });
+    } else if(type==='water'){
+      Object.assign(base,{ size:1, richness: rand(0.85,1.2) });
+    } else if(type==='rock'){
+      Object.assign(base,{ size:1 });
+    }
+    return base;
+  }
+
+  function tryAdd(type, x, y){
+    if(x<20||x>W-20||y<50||y>H-20) return;
+    if(type==='tree' && countType('tree')>=CAPS.tree) return;
+    if(type==='herbivore' && countType('herbivore')>=CAPS.herbivore) return;
+    if(type==='carnivore' && countType('carnivore')>=CAPS.carnivore) return;
+    if(type==='wolf' && countType('wolf')>=CAPS.wolf) return;
+    entities.push(makeEntity(type, x, y, type==='tree'?{size:1}:{})); // user-placed trees start grown
+  }
+
+  function seedWorld(){
+    generateSoil();
+    entities = [];
+    for(let i=0;i<18;i++) tryAdd('tree', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<10;i++) tryAdd('herbivore', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<3;i++) tryAdd('carnivore', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<2;i++) tryAdd('wolf', rand(40,W-40), rand(70,H-30));
+    tryAdd('water', W*0.2, H*0.6);
+    tryAdd('water', W*0.75, H*0.35);
+    history = [];
+    dayCount = 1;
+    dayTime = 0;
+    weather = null;
+    weatherCooldown = rand(20,35);
+    waterDroughtMul = 1;
+    flashT = 0;
+    rainOffset = 0;
+    weatherParticles = [];
+    selectedId = null;
+    aliveFlags = { tree:true, herbivore:true, carnivore:true, wolf:true };
+    lastSeasonIdx = -1;
+    dayBoundaryCounts = null;
+    lastDayCounted = 0;
+  }
+
+  function resetRunState(){
+    entities = []; particles=[]; history=[]; dayCount=1; dayTime=0;
+    weather=null; weatherCooldown=rand(20,35); waterDroughtMul=1; flashT=0; rainOffset=0; weatherParticles=[];
+    selectedId = null;
+    aliveFlags = { tree:true, herbivore:true, carnivore:true, wolf:true };
+    lastSeasonIdx = -1;
+    dayBoundaryCounts = null;
+    lastDayCounted = 0;
+  }
+
+  // ---------- scenario presets ----------
+  function scenarioDrought(){
+    generateSoil();
+    resetRunState();
+    for(let i=0;i<20;i++) tryAdd('tree', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<12;i++) tryAdd('herbivore', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<3;i++) tryAdd('carnivore', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<1;i++) tryAdd('wolf', rand(40,W-40), rand(70,H-30));
+    // just one shrinking water hole
+    tryAdd('water', W*0.5, H*0.55);
+    weather = { type:'drought', t:0, duration: 26 };
+    waterDroughtMul = 0.3;
+    weatherCooldown = 999;
+    eventLog = []; tickerQueue = []; renderLogList();
+    logEvent('🏜️','Scenario loaded: a severe drought has already taken hold.');
+  }
+
+  function scenarioPredatorCrash(){
+    generateSoil();
+    resetRunState();
+    for(let i=0;i<14;i++) tryAdd('tree', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<6;i++) tryAdd('herbivore', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<CAPS.carnivore-2;i++) tryAdd('carnivore', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<CAPS.wolf-4;i++) tryAdd('wolf', rand(40,W-40), rand(70,H-30));
+    tryAdd('water', W*0.2, H*0.6);
+    tryAdd('water', W*0.75, H*0.35);
+    eventLog = []; tickerQueue = []; renderLogList();
+    logEvent('📉','Scenario loaded: predators far outnumber prey — a crash is coming.');
+  }
+
+  function scenarioOvergrazing(){
+    generateSoil();
+    resetRunState();
+    for(let i=0;i<5;i++) tryAdd('tree', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<CAPS.herbivore-4;i++) tryAdd('herbivore', rand(40,W-40), rand(70,H-30));
+    for(let i=0;i<2;i++) tryAdd('carnivore', rand(40,W-40), rand(70,H-30));
+    tryAdd('water', W*0.2, H*0.6);
+    tryAdd('water', W*0.75, H*0.35);
+    eventLog = []; tickerQueue = []; renderLogList();
+    logEvent('🐇','Scenario loaded: too many mouths, too few trees.');
+  }
+
+  // ---------- save / load ----------
+  const SAVE_KEY = 'terrarium_save_v1';
+
+  function buildPayload(){
+    return {
+      entities, dayCount, dayTime, weather, waterDroughtMul,
+      soilPatches, history, eventLog, weatherCooldown,
+      aliveFlags, lastSeasonIdx, dayBoundaryCounts, lastDayCounted,
+      savedAt: Date.now(),
+    };
+  }
+
+  function applyPayload(payload){
+    entities = payload.entities || [];
+    dayCount = payload.dayCount ?? 1;
+    dayTime = payload.dayTime ?? 0;
+    weather = payload.weather ?? null;
+    waterDroughtMul = payload.waterDroughtMul ?? 1;
+    soilPatches = payload.soilPatches || soilPatches;
+    history = payload.history || [];
+    eventLog = payload.eventLog || [];
+    weatherCooldown = payload.weatherCooldown ?? rand(20,35);
+    aliveFlags = payload.aliveFlags || { tree:true, herbivore:true, carnivore:true, wolf:true };
+    lastSeasonIdx = payload.lastSeasonIdx ?? -1;
+    dayBoundaryCounts = payload.dayBoundaryCounts ?? null;
+    lastDayCounted = payload.lastDayCounted ?? 0;
+    particles = []; weatherParticles = []; selectedId = null;
+    renderLogList();
+  }
+
+  function saveLocal(payload){
+    try{
+      localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+      logEvent('💾','Terrarium saved on this device.');
+    }catch(err){
+      logEvent('⚠️','Save failed — your browser may be blocking local storage.');
+    }
+  }
+
+  function loadLocal(){
+    try{
+      const raw = localStorage.getItem(SAVE_KEY);
+      if(!raw){ logEvent('⚠️','No saved terrarium found on this device.'); return; }
+      applyPayload(JSON.parse(raw));
+      logEvent('📂','Terrarium loaded from this device.');
+    }catch(err){
+      logEvent('⚠️','Load failed — the saved data looks corrupted.');
+    }
+  }
+
+  async function saveGame(){
+    const payload = buildPayload();
+    if(currentUser){
+      try{
+        // strip undefined values so Firestore accepts the document
+        const clean = JSON.parse(JSON.stringify(payload));
+        await db.collection('terrariums').doc(currentUser.uid).set(clean);
+        logEvent('☁️', currentUser.isAnonymous ? 'Terrarium saved to your guest session.' : 'Terrarium saved to your account.');
+        return;
+      }catch(err){
+        logEvent('⚠️', 'Cloud save failed (' + err.message + ') — saving on this device instead.');
+      }
+    }
+    saveLocal(payload);
+  }
+
+  async function loadGame(){
+    if(currentUser){
+      try{
+        const doc = await db.collection('terrariums').doc(currentUser.uid).get();
+        if(doc.exists){
+          applyPayload(doc.data());
+          logEvent('☁️', currentUser.isAnonymous ? 'Terrarium loaded from your guest session.' : 'Terrarium loaded from your account.');
+        } else {
+          logEvent('⚠️','No cloud save found yet — try Save first.');
+        }
+      }catch(err){
+        logEvent('⚠️', 'Cloud load failed: ' + err.message);
+      }
+      return;
+    }
+    loadLocal();
+  }
+
+  // ---------- firebase auth ----------
+  const firebaseReady = (typeof firebase !== 'undefined');
+  const auth = firebaseReady ? firebase.auth() : null;
+  const db = firebaseReady ? firebase.firestore() : null;
+  let currentUser = null;
+
+  const acctStatusEl = document.getElementById('acctStatus');
+  const signInBtn = document.getElementById('signInBtn');
+  const guestBtn = document.getElementById('guestBtn');
+  const signOutBtn = document.getElementById('signOutBtn');
+  const authModal = document.getElementById('authModal');
+  const authEmail = document.getElementById('authEmail');
+  const authPassword = document.getElementById('authPassword');
+  const authError = document.getElementById('authError');
+
+  if(!firebaseReady){
+    acctStatusEl.textContent = '⚠️ Cloud sign-in unavailable — Save/Load uses this browser only';
+    signInBtn.disabled = true;
+    guestBtn.disabled = true;
+  }
+
+  function openAuthModal(){ authError.textContent=''; authPassword.value=''; authModal.classList.add('show'); }
+  function closeAuthModal(){ authModal.classList.remove('show'); }
+
+  signInBtn.addEventListener('click', openAuthModal);
+  document.getElementById('authModalClose').addEventListener('click', closeAuthModal);
+  authModal.addEventListener('click', (e)=>{ if(e.target===authModal) closeAuthModal(); });
+
+  guestBtn.addEventListener('click', async ()=>{
+    if(!firebaseReady) return;
+    guestBtn.disabled = true;
+    try{
+      await auth.signInAnonymously();
+      logEvent('👤','Continuing as a guest — your terrarium will sync to this guest session.');
+    }catch(err){
+      logEvent('⚠️','Guest sign-in failed: '+err.message);
+    }
+    guestBtn.disabled = false;
+  });
+
+  signOutBtn.addEventListener('click', async ()=>{
+    if(!firebaseReady) return;
+    try{ await auth.signOut(); logEvent('🚪','Signed out.'); }
+    catch(err){ logEvent('⚠️','Sign out failed.'); }
+  });
+
+  function friendlyAuthError(err){
+    const map = {
+      'auth/email-already-in-use': 'That email already has an account — try Sign In instead.',
+      'auth/invalid-email': 'That email address looks invalid.',
+      'auth/weak-password': 'Password should be at least 6 characters.',
+      'auth/wrong-password': 'Incorrect password.',
+      'auth/user-not-found': 'No account found for that email.',
+      'auth/invalid-credential': 'Incorrect email or password.',
+      'auth/missing-password': 'Enter a password.',
+      'auth/too-many-requests': 'Too many attempts — please wait a moment and try again.',
+    };
+    return map[err.code] || (err.message || 'Something went wrong.');
+  }
+
+  document.getElementById('authSignInBtn').addEventListener('click', async ()=>{
+    if(!firebaseReady) return;
+    authError.textContent = '';
+    const email = authEmail.value.trim(), pw = authPassword.value;
+    if(!email || !pw){ authError.textContent = 'Enter an email and password.'; return; }
+    try{
+      await auth.signInWithEmailAndPassword(email, pw);
+      closeAuthModal();
+    }catch(err){
+      authError.textContent = friendlyAuthError(err);
+    }
+  });
+
+  document.getElementById('authSignUpBtn').addEventListener('click', async ()=>{
+    if(!firebaseReady) return;
+    authError.textContent = '';
+    const email = authEmail.value.trim(), pw = authPassword.value;
+    if(!email || !pw){ authError.textContent = 'Enter an email and password.'; return; }
+    if(pw.length < 6){ authError.textContent = 'Password should be at least 6 characters.'; return; }
+    try{
+      await auth.createUserWithEmailAndPassword(email, pw);
+      closeAuthModal();
+    }catch(err){
+      authError.textContent = friendlyAuthError(err);
+    }
+  });
+
+  if(firebaseReady){
+    auth.onAuthStateChanged(user=>{
+      currentUser = user;
+      if(user){
+        signInBtn.style.display = 'none';
+        guestBtn.style.display = 'none';
+        signOutBtn.style.display = '';
+        acctStatusEl.textContent = user.isAnonymous
+          ? '👤 Guest session (cloud save on)'
+          : `✅ ${user.email}`;
+      } else {
+        signInBtn.style.display = '';
+        guestBtn.style.display = '';
+        signOutBtn.style.display = 'none';
+        acctStatusEl.textContent = '🔒 Not signed in — Save/Load uses this browser only';
+      }
+    });
+  }
+
+  // ---------- toolbar ----------
+  document.querySelectorAll('.tool').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      document.querySelectorAll('.tool').forEach(t=>t.classList.remove('active'));
+      el.classList.add('active');
+      currentTool = el.dataset.tool;
+    });
+  });
+
+  canvas.addEventListener('click', (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX-rect.left) * (canvas.width/rect.width);
+    const y = (e.clientY-rect.top) * (canvas.height/rect.height);
+    if(currentTool==='erase'){
+      // remove nearest entity within radius
+      let best=null, bd=28;
+      for(const en of entities){
+        const d = dist(en,{x,y});
+        if(d<bd){ bd=d; best=en; }
+      }
+      if(best){
+        best.dying = true; best.deathT=0; best.deathFast=true;
+        if(best.id===selectedId) selectedId = null;
+      }
+      return;
+    }
+    if(currentTool==='inspect'){
+      let best=null, bd=30;
+      for(const en of entities){
+        if(en.dying) continue;
+        const d = dist(en,{x,y});
+        if(d<bd){ bd=d; best=en; }
+      }
+      selectedId = best ? best.id : null;
+      return;
+    }
+    tryAdd(currentTool, x, y);
+  });
+
+  document.getElementById('inspClose').addEventListener('click', ()=>{ selectedId = null; });
+
+  document.getElementById('playBtn').addEventListener('click', (e)=>{
+    playing = !playing;
+    e.target.textContent = playing ? '⏸ Pause' : '▶ Play';
+  });
+  document.getElementById('clearBtn').addEventListener('click', ()=>{
+    entities = []; particles=[]; history=[]; dayCount=1; dayTime=0;
+    weather=null; weatherCooldown=rand(20,35); waterDroughtMul=1; flashT=0; rainOffset=0; weatherParticles=[];
+    selectedId = null;
+    aliveFlags = { tree:true, herbivore:true, carnivore:true, wolf:true };
+    lastSeasonIdx = -1; dayBoundaryCounts = null; lastDayCounted = 0;
+    eventLog = []; tickerQueue = []; renderLogList();
+  });
+  document.getElementById('seedBtn').addEventListener('click', ()=>{ seedWorld(); logEvent('🌎','A fresh terrarium is seeded.'); });
+  document.getElementById('scenDrought').addEventListener('click', scenarioDrought);
+  document.getElementById('scenCrash').addEventListener('click', scenarioPredatorCrash);
+  document.getElementById('scenGraze').addEventListener('click', scenarioOvergrazing);
+  document.getElementById('saveBtn').addEventListener('click', saveGame);
+  document.getElementById('loadBtn').addEventListener('click', loadGame);
+  const speedSlider = document.getElementById('speed');
+  speedSlider.addEventListener('input', ()=>{
+    speed = parseFloat(speedSlider.value);
+    document.getElementById('speedLabel').textContent = speed+'x';
+  });
+
+  // ---------- simulation ----------
+  function nearestOfType(from, type, maxDist){
+    let best=null, bd=maxDist;
+    for(const e of entities){
+      if(e.type!==type || e.dying) continue;
+      const d = dist(from,e);
+      if(d<bd){ bd=d; best=e; }
+    }
+    return best;
+  }
+
+  function steerToward(e, tx, ty, speedBase){
+    const dx = tx-e.x, dy=ty-e.y;
+    const d = Math.hypot(dx,dy)||1;
+    e.vx += (dx/d) * speedBase * 0.12;
+    e.vy += (dy/d) * speedBase * 0.12;
+  }
+  function steerAway(e, tx, ty, speedBase){
+    const dx = e.x-tx, dy=e.y-ty;
+    const d = Math.hypot(dx,dy)||1;
+    e.vx += (dx/d) * speedBase * 0.18;
+    e.vy += (dy/d) * speedBase * 0.18;
+  }
+
+  function spawnParticle(x,y,txt,color){
+    particles.push({x,y,txt,color,life:1, vy:-0.4});
+  }
+
+  function spawnWeatherParticle(txt,color){
+    weatherParticles.push({x:rand(0,W), y:-10, vx:rand(-0.3,0.3), vy:rand(0.5,1.1), txt, color});
+  }
+
+  function strikeRandomTree(){
+    const trees = entities.filter(e=>e.type==='tree' && !e.dying && e.size>0.3);
+    if(!trees.length) return;
+    const t = trees[Math.floor(rand(0,trees.length))];
+    flashT = 0.18;
+    if(Math.random()<0.55){
+      t.dying = true; t.deathT = 0; t.deathFast = true;
+    } else {
+      t.health -= rand(35,65);
+      if(t.health<=0){ t.dying=true; t.deathT=0; t.deathFast=true; }
+    }
+    spawnParticle(t.x, t.y-30, '⚡', '#f2e34c');
+  }
+
+  function update(dt){
+    dayTime += dt*0.02;
+    if(dayTime>=1){ dayTime=0; dayCount++; checkDayBoundary(); }
+    const season = getSeason();
+
+    // ---- season change narration ----
+    {
+      const idx = Math.floor((dayCount-1)/SEASON_LEN) % 4;
+      if(lastSeasonIdx===-1) lastSeasonIdx = idx;
+      else if(idx!==lastSeasonIdx){
+        lastSeasonIdx = idx;
+        logEvent(season.emoji, `${season.name} arrives.`);
+      }
+    }
+
+    // ---- weather events ----
+    if(weather){
+      weather.t += dt;
+      if(weather.type==='drought'){
+        const p = clamp(weather.t/weather.duration,0,1);
+        waterDroughtMul = 1 - Math.sin(p*Math.PI)*0.75;
+      } else if(weather.type==='storm'){
+        waterDroughtMul = 1;
+        weather.strikeTimer = (weather.strikeTimer ?? rand(0.3,0.8)) - dt;
+        if(weather.strikeTimer<=0){
+          weather.strikeTimer = rand(0.5,1.2);
+          strikeRandomTree();
+        }
+        rainOffset += dt*400;
+      }
+      if(weather.t>=weather.duration){
+        logEvent(weather.type==='drought' ? '🌦️' : '🌤️', weather.type==='drought' ? 'The drought breaks.' : 'The storm clears.');
+        weather = null;
+        waterDroughtMul = 1;
+        weatherCooldown = rand(35,70);
+      }
+    } else {
+      weatherCooldown -= dt;
+      if(weatherCooldown<=0){
+        const type = Math.random()<0.55 ? 'drought' : 'storm';
+        weather = { type, t:0, duration: type==='drought' ? rand(18,28) : rand(9,15) };
+        logEvent(type==='drought' ? '🏜️' : '⛈️', type==='drought' ? 'A drought begins.' : 'A storm rolls in.');
+      }
+    }
+    if(flashT>0) flashT = Math.max(0, flashT-dt*3);
+
+    // ---- ambient seasonal particles (falling leaves/snow) ----
+    if(season.name==='Fall' && Math.random()<dt*2.2) spawnWeatherParticle('🍂','#c98b4b');
+    if(season.name==='Winter' && Math.random()<dt*3) spawnWeatherParticle('❄️','#dfeffa');
+    for(const p of weatherParticles){ p.x += p.vx*dt*20; p.y += p.vy*dt*20; }
+    weatherParticles = weatherParticles.filter(p=>p.y < H+10);
+    if(weatherParticles.length>80) weatherParticles.splice(0, weatherParticles.length-80);
+
+    // population counts computed once per frame (instead of re-scanning entities
+    // on every reproduction check) and kept in sync as adds/deaths happen below —
+    // this turns what used to be an O(n^2) cap-check into O(n).
+    const popCounts = { tree:0, herbivore:0, carnivore:0, wolf:0 };
+    for(const e of entities){ if(!e.dying && popCounts[e.type]!==undefined) popCounts[e.type]++; }
+
+    for(const e of entities){
+      if(e.dying){
+        e.deathT += dt * (e.deathFast?6:2);
+        continue;
+      }
+      e.age += dt;
+
+      if(e.type==='tree'){
+        const windMul = (weather && weather.type==='storm') ? 2.2 : 1;
+        if(e.size < e.maxSize) e.size += e.growRate*dt*0.3*season.grow*e.soil;
+        e.sway += dt*1.5*windMul;
+        // health regen when mature
+        if(e.size>0.6 && e.health<e.maxHealth) e.health += dt*4*season.health*e.soil;
+        if(e.health<=0){ e.dying=true; e.deathT=0; popCounts.tree--; continue; }
+        // reproduction
+        e.reproCooldown -= dt;
+        if(e.size>=e.maxSize*0.9 && e.reproCooldown<=0 && popCounts.tree<CAPS.tree){
+          const nearby = entities.filter(o=>o.type==='tree' && dist(o,e)<38).length;
+          const chance = clamp(0.35*season.reproChance*clamp(e.soil,0.6,1.5), 0, 0.9);
+          if(nearby<4 && Math.random()<chance){
+            const ang = rand(0,Math.PI*2), dd = rand(28,55);
+            const nx = clamp(e.x+Math.cos(ang)*dd, 25, W-25);
+            const ny = clamp(e.y+Math.sin(ang)*dd, 55, H-25);
+            entities.push(makeEntity('tree', nx, ny, {size:0.12, gen:(e.gen||1)+1, parentId:e.id, lineage:[...(e.lineage||[]), e.id].slice(-6)}));
+            popCounts.tree++;
+          }
+          e.reproCooldown = rand(10,18)*season.reproCooldown;
+        }
+        continue;
+      }
+
+      if(e.type==='herbivore'){
+        e.energy -= dt*2.2*season.drain;
+        e.reproCooldown -= dt;
+        if(e.energy<=0){ e.dying=true; e.deathT=0; popCounts.herbivore--; continue; }
+
+        const predator = nearestOfType(e,'carnivore',110);
+        const food = nearestOfType(e,'tree',260);
+        const waterHole = nearestOfType(e,'water',9999);
+
+        // memory: remember the last food/water spot actually sensed
+        if(food && food.size>0.5 && food.health>8){
+          e.memory.foodX = food.x; e.memory.foodY = food.y; e.memory.foodAge = 0;
+        } else if(e.memory.foodAge!=null){
+          e.memory.foodAge += dt;
+          if(e.memory.foodAge > 45){ e.memory.foodX=null; e.memory.foodY=null; e.memory.foodAge=null; }
+        }
+        if(waterHole){
+          e.memory.waterX = waterHole.x; e.memory.waterY = waterHole.y; e.memory.waterAge = 0;
+        } else if(e.memory.waterAge!=null){
+          e.memory.waterAge += dt;
+          if(e.memory.waterAge > 70){ e.memory.waterX=null; e.memory.waterY=null; e.memory.waterAge=null; }
+        }
+
+        if(waterHole){
+          const dw = dist(e,waterHole);
+          const effR = 30 * (waterHole.richness||1) * waterDroughtMul;
+          if(dw < effR){
+            e.energy = Math.min(e.maxEnergy, e.energy + dt*6*waterDroughtMul);
+          }
+        }
+
+        if(predator){
+          steerAway(e, predator.x, predator.y, 2.6);
+        } else if(food && (food.size>0.5) && food.health>8){
+          const d = dist(e,food);
+          if(d<16){
+            const bite = Math.min(food.health, dt*18*season.scarcity);
+            food.health -= bite;
+            e.energy = Math.min(e.maxEnergy, e.energy + bite*1.1*season.scarcity);
+            if(Math.random()<0.05) spawnParticle(e.x,e.y-14,'+','#8fd18f');
+          } else {
+            steerToward(e, food.x, food.y, 1.4*e.speedMul);
+          }
+        } else if(e.memory.foodX!=null && dist(e,{x:e.memory.foodX,y:e.memory.foodY})>24){
+          // head straight for the last remembered feeding spot instead of re-searching blindly
+          steerToward(e, e.memory.foodX, e.memory.foodY, 1.1*e.speedMul);
+        } else {
+          // wander, gently biased to water — more so during drought
+          const wx = waterHole ? waterHole.x : e.memory.waterX;
+          const wy = waterHole ? waterHole.y : e.memory.waterY;
+          if(wx!=null && dist(e,{x:wx,y:wy})>40 && Math.random()<(waterDroughtMul<0.7?0.05:0.02)){
+            steerToward(e, wx, wy, 0.6);
+          }
+          e.vx += rand(-1,1)*0.4;
+          e.vy += rand(-1,1)*0.4;
+        }
+
+        // herd behavior: mild cohesion + alignment + separation with nearby rabbits, safety in numbers
+        if(!predator){
+          let cohX=0, cohY=0, alX=0, alY=0, sepX=0, sepY=0, n=0;
+          for(const o of entities){
+            if(o===e || o.type!=='herbivore' || o.dying) continue;
+            const d = dist(e,o);
+            if(d<70){
+              cohX+=o.x; cohY+=o.y; alX+=o.vx; alY+=o.vy; n++;
+              if(d<22){ sepX += (e.x-o.x)/d; sepY += (e.y-o.y)/d; }
+            }
+          }
+          if(n>0){
+            cohX/=n; cohY/=n; alX/=n; alY/=n;
+            e.vx += (cohX-e.x)*0.0022 + alX*0.05 + sepX*0.14;
+            e.vy += (cohY-e.y)*0.0022 + alY*0.05 + sepY*0.14;
+          }
+        } else {
+          // fleeing rabbits still bunch together for safety, but separation dominates so they don't collide
+          let sepX=0, sepY=0;
+          for(const o of entities){
+            if(o===e || o.type!=='herbivore' || o.dying) continue;
+            const d = dist(e,o);
+            if(d<30){ sepX += (e.x-o.x)/d; sepY += (e.y-o.y)/d; }
+          }
+          e.vx += sepX*0.1; e.vy += sepY*0.1;
+        }
+
+        if(e.energy>72 && e.reproCooldown<=0 && popCounts.herbivore<CAPS.herbivore){
+          e.energy -= 30;
+          e.reproCooldown = rand(8,14)*season.reproCooldown;
+          const child = makeEntity('herbivore', clamp(e.x+rand(-18,18),25,W-25), clamp(e.y+rand(-18,18),55,H-25), {
+            energy:35,
+            speedMul: mutate(e.speedMul, 0.55,1.9),
+            size: mutate(e.size, 0.55,1.6),
+            gen: (e.gen||1)+1,
+            parentId: e.id,
+            lineage: [...(e.lineage||[]), e.id].slice(-6),
+          });
+          entities.push(child);
+          popCounts.herbivore++;
+          spawnParticle(e.x,e.y-16,'❤','#e08bb0');
+        }
+      }
+
+      if(e.type==='carnivore'){
+        e.energy -= dt*1.8*season.drain;
+        e.reproCooldown -= dt;
+        if(e.energy<=0){ e.dying=true; e.deathT=0; popCounts.carnivore--; continue; }
+
+        const apexPredator = nearestOfType(e,'wolf',150);
+
+        // pack hunting: keep chasing a known target, or join a nearby packmate's hunt
+        let prey = e.targetId ? entities.find(x=>x.id===e.targetId && x.type==='herbivore' && !x.dying) : null;
+        if(prey && dist(e,prey) > 280) prey = null;
+        if(!prey) prey = nearestOfType(e,'herbivore',240);
+        if(!prey){
+          for(const o of entities){
+            if(o===e || o.type!=='carnivore' || o.dying || !o.targetId) continue;
+            if(dist(e,o) > 100) continue;
+            const t = entities.find(x=>x.id===o.targetId && x.type==='herbivore' && !x.dying);
+            if(t && dist(e,t) < 320){ prey = t; break; }
+          }
+        }
+        e.targetId = prey ? prey.id : null;
+
+        // memory: remember the last spot prey was actually seen
+        if(prey){
+          e.memory.preyX = prey.x; e.memory.preyY = prey.y; e.memory.preyAge = 0;
+        } else if(e.memory.preyAge!=null){
+          e.memory.preyAge += dt;
+          if(e.memory.preyAge > 20){ e.memory.preyX=null; e.memory.preyY=null; e.memory.preyAge=null; }
+        }
+
+        if(apexPredator){
+          steerAway(e, apexPredator.x, apexPredator.y, 2.4);
+        } else if(prey){
+          const d = dist(e,prey);
+          if(d<16){
+            prey.dying = true; prey.deathT=0; prey.deathFast=true;
+            popCounts.herbivore--;
+            e.energy = Math.min(e.maxEnergy, e.energy+55);
+            spawnParticle(e.x,e.y-14,'✦','#f2b544');
+            e.targetId = null;
+          } else {
+            steerToward(e, prey.x, prey.y, 1.8*e.speedMul);
+          }
+        } else if(e.memory.preyX!=null && dist(e,{x:e.memory.preyX,y:e.memory.preyY})>24){
+          // prowl back to the last hunting ground instead of searching blind
+          steerToward(e, e.memory.preyX, e.memory.preyY, 1.3*e.speedMul);
+        } else {
+          e.vx += rand(-1,1)*0.5;
+          e.vy += rand(-1,1)*0.5;
+        }
+
+        // pack behavior: foxes loosely cluster with nearby foxes so hunts happen in small groups
+        if(!apexPredator){
+          let cohX=0, cohY=0, sepX=0, sepY=0, n=0;
+          for(const o of entities){
+            if(o===e || o.type!=='carnivore' || o.dying) continue;
+            const d = dist(e,o);
+            if(d<95){ cohX+=o.x; cohY+=o.y; n++; if(d<24){ sepX += (e.x-o.x)/d; sepY += (e.y-o.y)/d; } }
+          }
+          if(n>0){
+            cohX/=n; cohY/=n;
+            e.vx += (cohX-e.x)*0.0016 + sepX*0.12;
+            e.vy += (cohY-e.y)*0.0016 + sepY*0.12;
+          }
+        }
+
+        if(e.energy>75 && e.reproCooldown<=0 && popCounts.carnivore<CAPS.carnivore){
+          e.energy -= 40;
+          e.reproCooldown = rand(10,16)*season.reproCooldown;
+          const child = makeEntity('carnivore', clamp(e.x+rand(-18,18),25,W-25), clamp(e.y+rand(-18,18),55,H-25), {
+            energy:40,
+            speedMul: mutate(e.speedMul, 0.6,1.9),
+            size: mutate(e.size, 0.6,1.6),
+            gen: (e.gen||1)+1,
+            parentId: e.id,
+            lineage: [...(e.lineage||[]), e.id].slice(-6),
+          });
+          entities.push(child);
+          popCounts.carnivore++;
+          spawnParticle(e.x,e.y-16,'❤','#e08bb0');
+        }
+      }
+
+      if(e.type==='wolf'){
+        e.energy -= dt*1.4*season.drain;
+        e.reproCooldown -= dt;
+        if(e.energy<=0){ e.dying=true; e.deathT=0; popCounts.wolf--; continue; }
+
+        const prey = nearestOfType(e,'carnivore',260);
+        if(prey){
+          e.memory.preyX = prey.x; e.memory.preyY = prey.y; e.memory.preyAge = 0;
+        } else if(e.memory.preyAge!=null){
+          e.memory.preyAge += dt;
+          if(e.memory.preyAge > 25){ e.memory.preyX=null; e.memory.preyY=null; e.memory.preyAge=null; }
+        }
+
+        if(prey){
+          const d = dist(e,prey);
+          if(d<18){
+            prey.dying = true; prey.deathT=0; prey.deathFast=true;
+            popCounts.carnivore--;
+            e.energy = Math.min(e.maxEnergy, e.energy+70);
+            spawnParticle(e.x,e.y-14,'✦','#f2b544');
+          } else {
+            steerToward(e, prey.x, prey.y, 1.6*e.speedMul);
+          }
+        } else if(e.memory.preyX!=null && dist(e,{x:e.memory.preyX,y:e.memory.preyY})>24){
+          steerToward(e, e.memory.preyX, e.memory.preyY, 1.2*e.speedMul);
+        } else {
+          e.vx += rand(-1,1)*0.45;
+          e.vy += rand(-1,1)*0.45;
+        }
+
+        if(e.energy>95 && e.reproCooldown<=0 && popCounts.wolf<CAPS.wolf){
+          e.energy -= 50;
+          e.reproCooldown = rand(16,24)*season.reproCooldown;
+          const child = makeEntity('wolf', clamp(e.x+rand(-18,18),25,W-25), clamp(e.y+rand(-18,18),55,H-25), {
+            energy:45,
+            speedMul: mutate(e.speedMul, 0.6,1.6),
+            size: mutate(e.size, 0.7,1.7),
+            gen: (e.gen||1)+1,
+            parentId: e.id,
+            lineage: [...(e.lineage||[]), e.id].slice(-6),
+          });
+          entities.push(child);
+          popCounts.wolf++;
+          spawnParticle(e.x,e.y-16,'❤','#e08bb0');
+        }
+      }
+
+      // movement integration for mobile creatures
+      if(e.type==='herbivore' || e.type==='carnivore' || e.type==='wolf'){
+        if(e.birthT!=null && e.birthT<1) e.birthT = Math.min(1, e.birthT + dt*2.2);
+        e.vx *= 0.9; e.vy *= 0.9;
+        const maxSpTable = { herbivore:1.6, carnivore:1.9, wolf:1.85 };
+        const maxSp = maxSpTable[e.type] * e.speedMul;
+        const sp = Math.hypot(e.vx,e.vy);
+        if(sp>maxSp){ e.vx = e.vx/sp*maxSp; e.vy = e.vy/sp*maxSp; }
+        e.x += e.vx*dt*30;
+        e.y += e.vy*dt*30;
+        e.x = clamp(e.x, 20, W-20);
+        e.y = clamp(e.y, 50, H-20);
+        if(Math.hypot(e.vx,e.vy)>0.05) e.angle = Math.atan2(e.vy,e.vx);
+        e.wobble += dt*8;
+      }
+    }
+
+    // remove fully-dead entities
+    entities = entities.filter(e => !(e.dying && e.deathT>1));
+
+    // particles
+    for(const p of particles){ p.y += p.vy*dt*30; p.life -= dt*1.2; }
+    particles = particles.filter(p=>p.life>0);
+
+    // history sampling (approx every ~0.5s of sim time)
+    lastHistorySample += dt;
+    if(lastHistorySample>0.5){
+      lastHistorySample = 0;
+      history.push({ tree: countType('tree'), herb: countType('herbivore'), carn: countType('carnivore'), wolf: countType('wolf') });
+      if(history.length>140) history.shift();
+      checkExtinction();
+    }
+  }
+
+  // ---------- rendering ----------
+  function skyColor(){
+    // dayTime: 0 = dawn, 0.5 = noon-ish loop -> simple sine based day/night
+    const t = Math.sin(dayTime*Math.PI*2 - Math.PI/2)*0.5+0.5; // 0 at night, 1 at day
+    const day = [191,227,234];
+    const night = [22,33,58];
+    const r = Math.round(night[0]+(day[0]-night[0])*t);
+    const g = Math.round(night[1]+(day[1]-night[1])*t);
+    const b = Math.round(night[2]+(day[2]-night[2])*t);
+    return {css:`rgb(${r},${g},${b})`, t};
+  }
+
+  function draw(){
+    const sky = skyColor();
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0, sky.css);
+    grad.addColorStop(0.62, sky.css);
+    grad.addColorStop(0.63, '#5b7d4a');
+    grad.addColorStop(1, '#3a5a34');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+
+    // soil richness patches (clipped to ground region)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, H*0.63, W, H*0.37);
+    ctx.clip();
+    for(const p of soilPatches){
+      const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r);
+      const rich = p.richness;
+      const color = rich>1
+        ? `rgba(55,105,35,${0.28*clamp((rich-1)/0.8,0,1)})`
+        : `rgba(160,135,90,${0.28*clamp((1-rich)/0.55,0,1)})`;
+      g.addColorStop(0,color);
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fill();
+    }
+    // seasonal ground tint
+    const season = getSeason();
+    if(season.groundTint){
+      ctx.fillStyle = season.groundTint;
+      ctx.fillRect(0, H*0.63, W, H*0.37);
+    }
+    ctx.restore();
+
+    // sun/moon
+    const angle = dayTime*Math.PI*2 - Math.PI/2;
+    const sx = W/2 + Math.cos(angle)*W*0.42;
+    const sy = H*0.32 + Math.sin(angle)*H*0.32;
+    ctx.font = '26px serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(sky.t>0.5 ? '☀️' : '🌙', sx, Math.min(sy, H*0.55));
+    ctx.globalAlpha = 1;
+
+    // night overlay
+    if(sky.t<0.5){
+      ctx.fillStyle = `rgba(10,15,35,${(0.5-sky.t)*0.55})`;
+      ctx.fillRect(0,0,W,H);
+    }
+
+    // ground texture line
+    ctx.strokeStyle='rgba(0,0,0,0.15)';
+    ctx.beginPath(); ctx.moveTo(0,H*0.63); ctx.lineTo(W,H*0.63); ctx.stroke();
+
+    // sort by y for pseudo-depth
+    const sorted = [...entities].sort((a,b)=>a.y-b.y);
+
+    for(const e of sorted){
+      ctx.save();
+      let alpha = 1, scale = 1;
+      if(e.dying){
+        alpha = clamp(1-e.deathT,0,1);
+        scale = 1 + e.deathT*0.4;
+      }
+      ctx.globalAlpha = alpha;
+      ctx.translate(e.x, e.y);
+
+      if(e.type==='tree'){
+        const s = e.size*scale;
+        const windMul = (weather && weather.type==='storm') ? 2.2 : 1;
+        const swayAngle = Math.sin(e.sway)*0.06*windMul;
+        ctx.rotate(swayAngle);
+        ctx.font = `${34*s}px serif`;
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText('🌳', 0, 10*s);
+        // health bar for stressed trees
+        if(e.health < e.maxHealth*0.5 && e.size>0.5){
+          ctx.rotate(-swayAngle);
+          ctx.fillStyle='rgba(0,0,0,0.35)';
+          ctx.fillRect(-14,-34*s-10,28,4);
+          ctx.fillStyle= e.health<30 ? '#c0483a' : '#e0a63a';
+          ctx.fillRect(-14,-34*s-10,28*(e.health/e.maxHealth),4);
+        }
+      } else if(e.type==='herbivore' || e.type==='carnivore' || e.type==='wolf'){
+        const bob = Math.sin(e.wobble)*3;
+        const flip = (e.vx < -0.02) ? -1 : 1;
+        const birthScale = e.birthT!=null && e.birthT<1
+          ? (1.16 - 0.16*Math.cos(e.birthT*Math.PI)) * Math.min(1, e.birthT*2.2)
+          : 1;
+        // soft contact shadow, grounds the creature and gives a sense of scale
+        ctx.save();
+        ctx.globalAlpha = alpha*0.28;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(0, 11*e.size*scale, 11*e.size*scale, 3.4*e.size*scale, 0, 0, Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.scale(flip*e.size*scale*birthScale, e.size*scale*birthScale);
+        ctx.font = '28px serif';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        const emojiMap = { herbivore:'🐰', carnivore:'🦊', wolf:'🐺' };
+        ctx.fillText(emojiMap[e.type], 0, bob);
+        ctx.restore();
+        // low energy indicator, drawn in unscaled space so it doesn't distort
+        if(e.energy < e.maxEnergy*0.3){
+          const pulse = 0.6 + Math.sin(performance.now()/180 + e.wobble)*0.4;
+          ctx.fillStyle = `rgba(192,72,58,${0.5+0.4*pulse})`;
+          ctx.beginPath();
+          ctx.arc(14*e.size*scale, -16*e.size*scale, 3, 0, Math.PI*2);
+          ctx.fill();
+        }
+      } else if(e.type==='water'){
+        const ws = 0.55+0.45*waterDroughtMul;
+        const rippleBob = Math.sin(performance.now()/500 + e.x*0.05)*1.5;
+        ctx.font=`${30*ws}px serif`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.globalAlpha = (0.85*alpha) * (0.6+0.4*waterDroughtMul);
+        ctx.fillText('💧', 0, rippleBob);
+      } else if(e.type==='rock'){
+        ctx.font='28px serif';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('🪨', 0, 0);
+      }
+      ctx.restore();
+    }
+
+    // inspector selection ring
+    if(selectedId){
+      const sel = entities.find(x=>x.id===selectedId && !x.dying);
+      if(sel){
+        const ringR = 18 * (sel.size||1) + 6;
+        ctx.save();
+        ctx.strokeStyle = '#f2b544';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8 + Math.sin(performance.now()/220)*0.15;
+        ctx.beginPath();
+        ctx.arc(sel.x, sel.y, ringR, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // particles
+    for(const p of particles){
+      ctx.save();
+      ctx.globalAlpha = clamp(p.life,0,1);
+      ctx.fillStyle = p.color;
+      ctx.font = '14px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(p.txt, p.x, p.y);
+      ctx.restore();
+    }
+
+    // falling leaves / snow
+    for(const p of weatherParticles){
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.font = '14px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillStyle = p.color;
+      ctx.fillText(p.txt, p.x, p.y);
+      ctx.restore();
+    }
+
+    // storm rain + darkening
+    if(weather && weather.type==='storm'){
+      ctx.save();
+      ctx.strokeStyle='rgba(200,215,230,0.35)';
+      ctx.lineWidth=1;
+      const spacing=22;
+      for(let x=-H; x<W+H; x+=spacing){
+        const sx = x + (rainOffset%spacing);
+        ctx.beginPath();
+        ctx.moveTo(sx,0);
+        ctx.lineTo(sx-40,H);
+        ctx.stroke();
+      }
+      ctx.fillStyle='rgba(15,20,30,0.15)';
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+
+    // drought haze
+    if(weather && weather.type==='drought'){
+      ctx.fillStyle = `rgba(180,140,70,${0.12+(1-waterDroughtMul)*0.15})`;
+      ctx.fillRect(0,0,W,H);
+    }
+
+    // lightning flash
+    if(flashT>0){
+      ctx.fillStyle = `rgba(255,255,255,${flashT*0.6})`;
+      ctx.fillRect(0,0,W,H);
+    }
+
+    // vignette
+    const vg = ctx.createRadialGradient(W/2,H/2,H*0.4,W/2,H/2,H*0.9);
+    vg.addColorStop(0,'rgba(0,0,0,0)');
+    vg.addColorStop(1,'rgba(0,0,0,0.25)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  function drawChart(){
+    const w = chartCanvas.width, h = chartCanvas.height;
+    chartCtx.clearRect(0,0,w,h);
+    chartCtx.fillStyle = '#16241a';
+    chartCtx.fillRect(0,0,w,h);
+    if(history.length<2) return;
+    const maxV = Math.max(20, ...history.map(p=>Math.max(p.tree,p.herb,p.carn,p.wolf)));
+    function line(key,color){
+      chartCtx.beginPath();
+      chartCtx.strokeStyle = color;
+      chartCtx.lineWidth = 2;
+      history.forEach((p,i)=>{
+        const x = (i/(history.length-1))*w;
+        const y = h - (p[key]/maxV)*(h-10) - 5;
+        if(i===0) chartCtx.moveTo(x,y); else chartCtx.lineTo(x,y);
+      });
+      chartCtx.stroke();
+    }
+    line('tree', '#3a8f3a');
+    line('herb', '#c98b4b');
+    line('carn', '#c0483a');
+    line('wolf', '#5a5a72');
+  }
+
+  function updateStatsDOM(){
+    document.getElementById('cTree').textContent = countType('tree');
+    document.getElementById('cHerb').textContent = countType('herbivore');
+    document.getElementById('cCarn').textContent = countType('carnivore');
+    document.getElementById('cWolf').textContent = countType('wolf');
+    document.getElementById('cDay').textContent = dayCount;
+    const season = getSeason();
+    document.getElementById('seasonEmoji').textContent = season.emoji;
+    document.getElementById('cSeason').textContent = season.name + ` (day ${((dayCount-1)%SEASON_LEN)+1}/${SEASON_LEN})`;
+    document.getElementById('cWeather').textContent = weather
+      ? (weather.type==='drought' ? '🏜️ Drought' : '⛈️ Storm')
+      : '☀️ Clear';
+    document.getElementById('cHerbSpeed').textContent = countType('herbivore') ? avgTrait('herbivore','speedMul').toFixed(2)+'x' : '–';
+    document.getElementById('cHerbSize').textContent = countType('herbivore') ? avgTrait('herbivore','size').toFixed(2)+'x' : '–';
+    document.getElementById('cCarnSpeed').textContent = countType('carnivore') ? avgTrait('carnivore','speedMul').toFixed(2)+'x' : '–';
+    document.getElementById('cCarnSize').textContent = countType('carnivore') ? avgTrait('carnivore','size').toFixed(2)+'x' : '–';
+  }
+
+  const inspectorEl = document.getElementById('inspector');
+  const inspTitleEl = document.getElementById('inspTitle');
+  const inspBodyEl = document.getElementById('inspBody');
+  const NAME = { tree:'Tree', herbivore:'Rabbit', carnivore:'Fox', wolf:'Wolf', water:'Water hole', rock:'Rock' };
+
+  function bar(pct, colorHi, colorLo){
+    const c = pct<0.3 ? colorLo : colorHi;
+    return `<div class="insp-bar-wrap"><div class="insp-bar" style="width:${clamp(pct*100,0,100)}%;background:${c}"></div></div>`;
+  }
+
+  function updateInspectorDOM(){
+    if(!selectedId){ inspectorEl.classList.remove('show'); return; }
+    const e = entities.find(x=>x.id===selectedId);
+    if(!e || e.dying){
+      inspectorEl.classList.add('show');
+      inspTitleEl.textContent = '👻 Gone';
+      inspBodyEl.innerHTML = `<div class="insp-gone">This individual is no longer with us.</div>`;
+      return;
+    }
+    inspectorEl.classList.add('show');
+    inspTitleEl.textContent = `${EMOJI[e.type]} ${NAME[e.type]||e.type}`;
+    const ageDays = Math.max(0, (dayCount - (e.birthDay||1)) + dayTime).toFixed(1);
+    let html = '';
+    html += `<div class="insp-row"><span>Age</span><span>${ageDays}d</span></div>`;
+
+    if(e.type==='tree'){
+      html += `<div class="insp-row"><span>Health</span><span>${Math.round(e.health)}/${Math.round(e.maxHealth)}</span></div>`;
+      html += bar(e.health/e.maxHealth, '#3a8f3a', '#c0483a');
+      html += `<div class="insp-row"><span>Growth</span><span>${Math.round(e.size/e.maxSize*100)}%</span></div>`;
+      html += `<div class="insp-row"><span>Soil</span><span>${e.soil.toFixed(2)}x</span></div>`;
+    } else if(e.type==='herbivore' || e.type==='carnivore' || e.type==='wolf'){
+      html += `<div class="insp-row"><span>Energy</span><span>${Math.round(e.energy)}/${Math.round(e.maxEnergy)}</span></div>`;
+      html += bar(e.energy/e.maxEnergy, '#8fd18f', '#c0483a');
+      html += `<div class="insp-row"><span>Speed</span><span>${e.speedMul.toFixed(2)}x</span></div>`;
+      html += `<div class="insp-row"><span>Size</span><span>${e.size.toFixed(2)}x</span></div>`;
+      html += `<div class="insp-row"><span>Generation</span><span>${e.gen||1}</span></div>`;
+      const parentAlive = e.parentId && entities.some(p=>p.id===e.parentId && !p.dying);
+      html += `<div class="insp-row"><span>Lineage</span><span>${(e.lineage&&e.lineage.length)?e.lineage.length+' ancestors':'founder'}</span></div>`;
+      if(e.parentId){
+        html += `<div class="insp-row"><span>Parent</span><span>${parentAlive?'alive':'deceased'}</span></div>`;
+      }
+    } else if(e.type==='water'){
+      html += `<div class="insp-row"><span>Richness</span><span>${e.richness.toFixed(2)}x</span></div>`;
+    }
+    inspBodyEl.innerHTML = html;
+  }
+
+  let lastT = performance.now();
+  function loop(now){
+    const rawDt = Math.min((now-lastT)/1000, 0.1);
+    lastT = now;
+    if(playing){
+      const dt = rawDt*speed;
+      update(dt);
+    }
+    updateTicker(rawDt);
+    draw();
+    drawChart();
+    updateStatsDOM();
+    updateInspectorDOM();
+    requestAnimationFrame(loop);
+  }
+
+  seedWorld();
+  logEvent('🌎', 'The terrarium is seeded and life begins.');
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
